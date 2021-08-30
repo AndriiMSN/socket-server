@@ -2,21 +2,19 @@ const express = require('express');
 const app = express();
 const port = 4000;
 
-const path = require('path')
-const bodyParser = require("body-parser")
-const mongoose = require("./database");
 const Chat = require('./schemas/chat')
+const Message = require('./schemas/message')
 const cors = require("cors");
+const mongoose = require("./database");
 
 const server = app.listen(port, () => console.log("Server listening on port " + port));
 const io = require("socket.io")(server, {pingTimeout: 60000});
 
+app.use(express.json());
+app.use(cors());
 
-app.use(express.json())
-app.use(cors())
-
-app.post("/:receiverId", async (req, res) => {
-    const {userId} = req.body
+app.post("/get_chat/:receiverId", async (req, res) => {
+    const {userId} = req.body;
     let chat = await Chat.findOne({
         users: {
             $all: [
@@ -25,12 +23,43 @@ app.post("/:receiverId", async (req, res) => {
             ],
         },
     })
-    console.log(chat)
-
     if (chat == null) {
         chat = await getChatByUserId(userId, req.params.receiverId,);
     }
-    res.json(chat).end()
+    res.json(chat).end();
+})
+app.post('/messages/send', async (req, res) => {
+    if (!req.body.content || !req.body.chat) {
+        return res.sendStatus(400);
+    }
+
+    const newMessage = {
+        sender: req.body.sender,
+        content: req.body.content,
+        chat: req.body.chat,
+    };
+
+    Message.create(newMessage)
+        .then(async message => {
+            message = await message.populate("chat").execPopulate();
+
+            Chat.findByIdAndUpdate(req.body.chat, {latestMessage: message})
+                .catch(error => console.log(error));
+            res.status(201).send(message);
+        })
+        .catch(error => {
+            console.log(error)
+            res.sendStatus(400);
+        })
+})
+app.post('/messages/get/:chat', async (req, res) => {
+
+    Message.find({chat: req.params.chat}, {}, {limit: 10}).sort({_id: -1})
+        .then(results => res.status(200).send(results))
+        .catch(error => {
+            console.log(error);
+            res.sendStatus(400);
+        })
 })
 
 function getChatByUserId(userLoggedInId, otherUserId) {
@@ -54,40 +83,39 @@ function getChatByUserId(userLoggedInId, otherUserId) {
             new: true,
             upsert: true,
         }
-    )
+    );
 }
 
 io.on("connection", socket => {
 
     socket.on("setup", userData => {
-        socket.join(userData.id);
+        socket.join(userData.id.toString());
         socket.emit("connected");
     })
 
     socket.on("join room", room => {
-        console.log(">>>room", room)
-        socket.join(room)
+        console.log(">>>room", room);
+        socket.join(room);
     });
     socket.on("leave room", room => {
-        console.log(">>>room leave", room)
-        socket.leave(room)
+        console.log(">>>room leave", room);
+        socket.leave(room);
     });
+
     socket.on("typing", room => {
-        socket.in(room).emit("typing")
+        socket.in(room).emit("typing");
     });
     socket.on("stop typing", room => socket.in(room).emit("stop typing"));
 
 
     socket.on("new message", newMessage => {
-        const chat = newMessage.chat;
 
-        if (!chat.users) return console.log("Chat.users not defined");
-
-        chat.users.forEach(user => {
-
-            if (user._id === newMessage.sender._id) return;
-            console.log(user);
-            socket.in(user._id).emit("message received", newMessage);
-        })
+        if (!newMessage.users) return console.log("Chat.users not defined");
+        newMessage.date = new Date().toISOString()
+        newMessage.users.forEach(user => {
+            if (user !== newMessage.sender) {
+                socket.in(user).emit("message received", newMessage);
+            }
+        });
     });
 })

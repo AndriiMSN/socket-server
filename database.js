@@ -12,7 +12,7 @@ class Database {
     connect() {
         mongoose
             .connect(
-                "mongodb+srv://andrii:VzVFYRh2C-69k7*@cluster0.kwaba.mongodb.net/myFirstDatabase?retryWrites=true&w=majority"
+                "mongodb://myUserAdmin:password@157.245.89.26:27017/?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false"
             )
             .then(() => {
                 console.log("database connection successful");
