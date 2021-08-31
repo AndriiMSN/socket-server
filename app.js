@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const port = 4000;
+const port = 3100;
 
 const Chat = require('./schemas/chat')
 const Message = require('./schemas/message')
@@ -54,7 +54,7 @@ app.post('/messages/send', async (req, res) => {
 })
 app.post('/messages/get/:chat', async (req, res) => {
 
-    Message.find({chat: req.params.chat}, {}, {limit: 10}).sort({_id: -1})
+    Message.find({chat: req.params.chat}, {}, {limit: 10, skip: req.body.skip}).sort({_id: -1})
         .then(results => res.status(200).send(results))
         .catch(error => {
             console.log(error);
