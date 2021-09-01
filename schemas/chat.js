@@ -4,7 +4,7 @@ const Schema = mongoose.Schema;
 const chatSchema = new Schema({
     chatName: {type: String, trim: true},
     isGroupChat: {type: Boolean, default: false},
-    users: [{type: String, trim: true}],
+    users: [{type: Object}],
     latestMessage: { type: Schema.Types.ObjectId, ref: 'Message' }
 }, {timestamps: true});
 

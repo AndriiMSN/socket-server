@@ -6,7 +6,9 @@ const messageSchema = new Schema({
     content: {type: String, trim: true},
     chat: {type: Schema.Types.ObjectId, ref: 'Chat'},
     date: {type: Date, default: new Date()},
-    readBy: [{type: String, trim: true}]
+    read: {type: Number, default: 0}
 }, {timestamps: true});
+
+messageSchema.methods.updateRead =
 
 module.exports = mongoose.model('Message', messageSchema);

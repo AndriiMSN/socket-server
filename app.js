@@ -6,6 +6,7 @@ const Chat = require('./schemas/chat')
 const Message = require('./schemas/message')
 const cors = require("cors");
 const mongoose = require("./database");
+const {ObjectId} = require("mongodb");
 
 const server = app.listen(port, () => console.log("Server listening on port " + port));
 const io = require("socket.io")(server, {pingTimeout: 60000});
@@ -13,23 +14,23 @@ const io = require("socket.io")(server, {pingTimeout: 60000});
 app.use(express.json());
 app.use(cors());
 
-app.post("/get_chat/:receiverId", async (req, res) => {
-    const {userId} = req.body;
+app.post("/get_chat", async (req, res) => {
+    const {user, receiver} = req.body;
     let chat = await Chat.findOne({
         users: {
             $all: [
-                {$elemMatch: {$eq: userId}},
-                {$elemMatch: {$eq: req.params.receiverId}},
+                {$elemMatch: {id: {$eq: user.id}}},
+                {$elemMatch: {id: {$eq: receiver.id}}},
             ],
         },
     })
     if (chat == null) {
-        chat = await getChatByUserId(userId, req.params.receiverId,);
+        chat = await getChatByUserId(user, receiver);
     }
     res.json(chat).end();
 })
 app.post('/messages/send', async (req, res) => {
-    if (!req.body.content || !req.body.chat) {
+    if (!req.body.content || !req.body.chat || !req.body.sender) {
         return res.sendStatus(400);
     }
 
@@ -61,22 +62,43 @@ app.post('/messages/get/:chat', async (req, res) => {
             res.sendStatus(400);
         })
 })
+app.post("/get_all_chats/:userId", async (req, res) => {
+    Chat.find({
+        latestMessage: {$exists: true},
+        users:
+            {
+                $elemMatch: {
+                    id: {$eq: req.params.userId}
+                }
+            }
+    })
+        .populate("latestMessage")
+        .sort({updatedAt: -1})
+        .then(results => {
+            res.status(200).send(results)
+        })
+        .catch(error => {
+            console.log(error);
+            res.sendStatus(400);
+        })
+})
 
-function getChatByUserId(userLoggedInId, otherUserId) {
+function getChatByUserId(user, receiver) {
+    console.log(user, receiver)
     return Chat.findOneAndUpdate(
         {
             isGroupChat: false,
             users: {
                 $size: 2,
                 $all: [
-                    {$elemMatch: {$eq: userLoggedInId}},
-                    {$elemMatch: {$eq: otherUserId}},
+                    {$elemMatch: {id: {$eq: user.id}}},
+                    {$elemMatch: {id: {$eq: user.id}}},
                 ],
             },
         },
         {
             $setOnInsert: {
-                users: [userLoggedInId, otherUserId],
+                users: [user, receiver],
             },
         },
         {
@@ -113,9 +135,22 @@ io.on("connection", socket => {
         if (!newMessage.users) return console.log("Chat.users not defined");
         newMessage.date = new Date().toISOString()
         newMessage.users.forEach(user => {
-            if (user !== newMessage.sender) {
-                socket.in(user).emit("message received", newMessage);
+            if (user.id !== newMessage.sender) {
+                socket.in(user.id).emit("message received", newMessage);
             }
         });
     });
+
+    socket.on("read message", (room) => {
+        if (socket.adapter.rooms[room].length > 1) {
+            socket.in(room).emit("read message")
+        }
+    })
+
+    // Message.findByIdAndUpdate(id, {
+    //     read: 1
+    // }, (err, result) => {
+    //     console.log(result)
+    // })
+
 })
