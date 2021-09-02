@@ -82,6 +82,38 @@ app.post("/get_all_chats/:userId", async (req, res) => {
             res.sendStatus(400);
         })
 })
+app.post("/get_unread_messages/:chat", async (req, res) => {
+    Message.find({
+        chat: new ObjectId(req.params.chat),
+        read: 0,
+        sender: {$ne: req.body.receiver}
+    })
+        .countDocuments()
+        .then(results => {
+            res.status(200).json({results})
+        })
+        .catch(error => {
+            console.log(error);
+            res.sendStatus(400);
+        })
+})
+app.post("/unread_all/:chat", async (req, res) => {
+    Message.updateMany({
+        chat: new ObjectId(req.params.chat),
+        read: 0,
+        sender: {$ne: req.body.receiver}
+    }, {
+        read: 1
+    }, (err, result) => {
+        console.log(result)
+    }).then(results => {
+        res.sendStatus(200)
+    })
+        .catch(error => {
+            console.log(error);
+            res.sendStatus(400);
+        })
+})
 
 function getChatByUserId(user, receiver) {
     console.log(user, receiver)
@@ -92,7 +124,7 @@ function getChatByUserId(user, receiver) {
                 $size: 2,
                 $all: [
                     {$elemMatch: {id: {$eq: user.id}}},
-                    {$elemMatch: {id: {$eq: user.id}}},
+                    {$elemMatch: {id: {$eq: receiver.id}}},
                 ],
             },
         },
@@ -108,11 +140,21 @@ function getChatByUserId(user, receiver) {
     );
 }
 
+
 io.on("connection", socket => {
 
+
     socket.on("setup", userData => {
-        socket.join(userData.id.toString());
-        socket.emit("connected");
+        // console.log(socket.client)
+        console.log(!socket.rooms[userData.id.toString()])
+        if (!socket.rooms[userData.id.toString()]) {
+            socket.join(userData.id.toString());
+            socket.emit("connected");
+        }
+    })
+
+    socket.on("disconnect", () => {
+        console.log("disconnect", socket.id)
     })
 
     socket.on("join room", room => {
@@ -122,7 +164,6 @@ io.on("connection", socket => {
 
     socket.on("in room", room => {
         if (socket.adapter.rooms[room].length > 1) {
-            console.log(true)
             Message.updateMany({
                 chat: new ObjectId(room),
                 read: 0
