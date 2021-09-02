@@ -119,6 +119,22 @@ io.on("connection", socket => {
         console.log(">>>room", room);
         socket.join(room);
     });
+
+    socket.on("in room", room => {
+        if (socket.adapter.rooms[room].length > 1) {
+            console.log(true)
+            Message.updateMany({
+                chat: new ObjectId(room),
+                read: 0
+            }, {
+                read: 1
+            }, (err, result) => {
+                console.log(result)
+            })
+        }
+        socket.in(room).emit("in room");
+    });
+
     socket.on("leave room", room => {
         console.log(">>>room leave", room);
         socket.leave(room);
@@ -127,6 +143,7 @@ io.on("connection", socket => {
     socket.on("typing", room => {
         socket.in(room).emit("typing");
     });
+
     socket.on("stop typing", room => socket.in(room).emit("stop typing"));
 
 
@@ -141,16 +158,16 @@ io.on("connection", socket => {
         });
     });
 
-    socket.on("read message", (room) => {
-        if (socket.adapter.rooms[room].length > 1) {
-            socket.in(room).emit("read message")
+    socket.on("read message", (data) => {
+        if (socket.adapter.rooms[data.room].length > 1) {
+            Message.findByIdAndUpdate(data.id, {
+                read: 1
+            }, (err, result) => {
+                console.log(result)
+            })
+            socket.in(data.room).emit("read message")
         }
     })
 
-    // Message.findByIdAndUpdate(id, {
-    //     read: 1
-    // }, (err, result) => {
-    //     console.log(result)
-    // })
 
 })
