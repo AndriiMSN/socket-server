@@ -7,6 +7,7 @@ const Message = require("./schemas/message");
 const cors = require("cors");
 const mongoose = require("./database");
 const {ObjectId} = require("mongodb");
+const {log} = require("nodemon/lib/utils");
 
 const server = app.listen(port, () =>
     console.log("Server listening on port " + port)
@@ -120,7 +121,30 @@ app.post("/get_unread_messages_count/:user", async (req, res) => {
             res.sendStatus(400);
         });
 });
+app.delete("/messages/delete", async (req, res) => {
+    if (!req.body.sender) return res.sendStatus(401);
 
+    Message.findOneAndDelete({
+        _id: ObjectId(req.body.id),
+        sender: {$eq: req.body.sender},
+    })
+        .then((result) => {
+            Message.find(
+                {chat: req.body.chat},
+                {},
+                {limit: 1}
+            )
+                .sort({_id: -1})
+                .then(async (message) => {
+                    Chat.findByIdAndUpdate(req.body.chat, {latestMessage: ObjectId(message[0]._id)})
+                        .catch((error) => console.log(error));
+                })
+            res.status(202).json(result)
+        })
+        .catch((e) => {
+            res.status(400).json({error: e})
+        })
+})
 app.post("/unread_all/:chat", async (req, res) => {
     Message.updateMany(
         {
@@ -184,7 +208,6 @@ io.on("connection", (socket) => {
     });
 
     socket.on("join room", (room) => {
-        console.log(">>>room", room);
         socket.join(room);
     });
 
@@ -208,7 +231,6 @@ io.on("connection", (socket) => {
 
     socket.on("leave room", (room) => {
         console.log(">>>room leave", room);
-        socket.leave(room);
     });
 
     socket.on("typing", (room) => {
@@ -251,4 +273,9 @@ io.on("connection", (socket) => {
             socket.in(data.room).emit("read message");
         }
     });
+
+    socket.on("delete message", data => {
+        console.log(data)
+        socket.in(data.chatId).emit("delete message", data.messageId)
+    })
 });
